@@ -62,7 +62,7 @@
     <ul class="lock-points">
       <li><svg class="ic" width="16" height="16"><use href="#i-wave"/></svg><span data-i18n="lock.p1">Audio, fade, stop, wait and memo cues</span></li>
       <li><svg class="ic" width="16" height="16"><use href="#i-fade"/></svg><span data-i18n="lock.p2">Per-cue level, pan, trim and live fades</span></li>
-      <li><svg class="ic" width="16" height="16"><use href="#i-cloud"/></svg><span data-i18n="lock.p3">Firebase sync with offline fallback</span></li>
+      <li><svg class="ic" width="16" height="16"><use href="#i-cloud"/></svg><span data-i18n="lock.p3">Firestore sync, audio served from the repository</span></li>
       <li><svg class="ic" width="16" height="16"><use href="#i-lock"/></svg><span data-i18n="lock.p4">Password locked for internal use</span></li>
     </ul>
     <svg class="lock-wave" viewBox="0 0 420 60" aria-hidden="true"><path d="M0 30h30l8-18 10 36 12-28 10 22 12-34 10 40 12-26 10 18 12-30 10 26 12-18 10 14 12-22 10 20 12-12 10 8 12-16 10 14 12-10 10 6 12-8 10 6 12-4 10 4 12-2 10 2h30"/></svg>
@@ -107,9 +107,9 @@
     <div class="show-picker">
       <svg class="ic" width="15" height="15"><use href="#i-shows"/></svg>
       <select id="showSelect" class="select small"></select>
-      <button id="newShow" class="icon-btn" type="button" title="New show"><svg class="ic" width="15" height="15"><use href="#i-plus"/></svg></button>
-      <button id="renameShow" class="icon-btn" type="button" title="Rename show"><svg class="ic" width="15" height="15"><use href="#i-edit"/></svg></button>
-      <button id="deleteShow" class="icon-btn" type="button" title="Delete show"><svg class="ic" width="15" height="15"><use href="#i-trash"/></svg></button>
+      <button id="newShow" class="icon-btn" type="button" data-i18n-title="rail.newShow" title="New show"><svg class="ic" width="15" height="15"><use href="#i-plus"/></svg></button>
+      <button id="renameShow" class="icon-btn" type="button" data-i18n-title="rail.renameShow" title="Rename show"><svg class="ic" width="15" height="15"><use href="#i-edit"/></svg></button>
+      <button id="deleteShow" class="icon-btn" type="button" data-i18n-title="rail.deleteShow" title="Delete show"><svg class="ic" width="15" height="15"><use href="#i-trash"/></svg></button>
     </div>
     <div class="spacer"></div>
     <span id="syncPill" class="status-pill"><span class="status-dot"></span><span id="syncText">Offline</span></span>
@@ -122,8 +122,8 @@
     </div>
     <button id="preloadBtn" class="btn small" type="button"><svg class="ic" width="15" height="15"><use href="#i-download"/></svg><span data-i18n="rail.preload">Preload</span></button>
     <span id="preloadPill" class="status-pill mono">0/0</span>
-    <button id="settingsBtn" class="icon-btn" type="button" title="Settings"><svg class="ic" width="16" height="16"><use href="#i-sliders"/></svg></button>
-    <button id="lockBtn" class="icon-btn" type="button" title="Lock"><svg class="ic" width="16" height="16"><use href="#i-lock"/></svg></button>
+    <button id="settingsBtn" class="icon-btn" type="button" data-i18n-title="rail.settings" title="Settings"><svg class="ic" width="16" height="16"><use href="#i-sliders"/></svg></button>
+    <button id="lockBtn" class="icon-btn" type="button" data-i18n-title="rail.lock" title="Lock"><svg class="ic" width="16" height="16"><use href="#i-lock"/></svg></button>
   </header>
 
   <div class="workspace">
@@ -135,11 +135,11 @@
         <select id="sortBy" class="select small"><option value="order">Cue order</option><option value="name">Name</option><option value="type">Type</option><option value="len">Length</option></select>
         <button id="sortDir" class="icon-btn" type="button" title="Sort direction"><svg class="ic" width="15" height="15"><use href="#i-down"/></svg></button>
         <div class="spacer"></div>
-        <button id="addAudio" class="btn primary small" type="button"><svg class="ic" width="15" height="15"><use href="#i-upload"/></svg><span data-i18n="insp.upload">Upload audio</span></button>
+        <button id="addAudio" class="btn primary small" type="button"><svg class="ic" width="15" height="15"><use href="#i-link"/></svg><span data-i18n="src.link">Link audio</span></button>
         <input id="fileInput" type="file" accept="audio/*" multiple hidden>
         <select id="addType" class="select small"><option value="audio">Audio</option><option value="fade">Fade</option><option value="stop">Stop</option><option value="wait">Wait</option><option value="memo">Memo</option></select>
         <button id="addCue" class="btn small" type="button"><svg class="ic" width="15" height="15"><use href="#i-plus"/></svg><span data-i18n="sheet.addCue">Add cue</span></button>
-        <button id="inspectorToggle" class="icon-btn drawer-toggle" type="button" title="Inspector"><svg class="ic" width="16" height="16"><use href="#i-sliders"/></svg></button>
+        <button id="inspectorToggle" class="icon-btn drawer-toggle" type="button" data-i18n-title="sheet.inspector" title="Inspector"><svg class="ic" width="16" height="16"><use href="#i-sliders"/></svg></button>
       </div>
 
       <div class="viewbar">
@@ -201,9 +201,9 @@
     </div>
     <div class="transport-buttons">
       <div class="button-row">
-        <button id="topBtn" class="icon-btn" type="button" title="Back to top"><svg class="ic" width="15" height="15"><use href="#i-up"/></svg></button>
-        <button id="prevBtn" class="icon-btn" type="button" title="Previous"><svg class="ic" width="15" height="15"><use href="#i-up"/></svg></button>
-        <button id="nextBtn" class="icon-btn" type="button" title="Next"><svg class="ic" width="15" height="15"><use href="#i-down"/></svg></button>
+        <button id="topBtn" class="icon-btn" type="button" data-i18n-title="tx.top" title="Back to top"><svg class="ic" width="15" height="15"><use href="#i-up"/></svg></button>
+        <button id="prevBtn" class="icon-btn" type="button" data-i18n-title="tx.prev" title="Previous"><svg class="ic" width="15" height="15"><use href="#i-up"/></svg></button>
+        <button id="nextBtn" class="icon-btn" type="button" data-i18n-title="tx.next" title="Next"><svg class="ic" width="15" height="15"><use href="#i-down"/></svg></button>
         <button id="pauseAllBtn" class="btn small" type="button"><svg id="pauseIcon" class="ic" width="14" height="14"><use href="#i-pause"/></svg><span id="pauseLabel">Pause all</span></button>
         <button id="stopAllBtn" class="btn small" type="button"><svg class="ic" width="14" height="14"><use href="#i-stop"/></svg><span data-i18n="tx.stopAll">Stop all</span></button>
       </div>
@@ -221,6 +221,7 @@
     <div class="dialog-head"><svg class="ic" width="17" height="17"><use href="#i-sliders"/></svg><h2 data-i18n="set.title">Settings</h2><div class="spacer"></div><button id="closeSettings" class="icon-btn" type="button"><svg class="ic" width="16" height="16"><use href="#i-close"/></svg></button></div>
     <div class="dialog-body">
       <section class="settings-section"><h3 data-i18n="set.language">Language</h3><select id="setLang" class="select"><option value="en">English</option><option value="zh-HK">繁體中文（香港）</option></select></section>
+      <section class="settings-section"><h3 data-i18n="src.title">Audio source</h3><p id="sourceNote" class="hint-text"></p></section>
       <section class="settings-section"><h3 data-i18n="set.audio">Audio</h3>
         <label class="field"><span class="field-label" data-i18n="set.output">Output device</span><select id="setOutput" class="select"></select></label>
         <button id="refreshDev" class="btn small" type="button"><span data-i18n="set.refresh">Refresh devices</span></button>
@@ -235,8 +236,19 @@
       </section>
       <section class="settings-section"><h3 data-i18n="set.account">Account</h3>
         <p id="accountInfo" class="hint-text"></p>
-        <div class="inline-form"><input id="newPass" type="password" placeholder="New password"><button id="changePass" class="btn small" type="button"><span data-i18n="set.changePass">Update</span></button></div>
+        <div class="inline-form"><input id="newPass" type="password" data-i18n-ph="set.newPass" placeholder="New password"><button id="changePass" class="btn small" type="button"><span data-i18n="set.changePass">Update</span></button></div>
         <button id="signOut" class="btn danger" type="button"><span data-i18n="set.signout">Lock desk</span></button>
+      </section>
+      <section class="settings-section"><h3 data-i18n="set.shortcuts">Keyboard</h3>
+        <table class="help-table">
+          <tr><td><kbd>Space</kbd></td><td data-i18n="help.go">Fire the standby cue</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td data-i18n="help.panic">Fade out and stop everything</td></tr>
+          <tr><td><kbd>Up</kbd> <kbd>Down</kbd></td><td data-i18n="help.nav">Move the standby pointer</td></tr>
+          <tr><td><kbd>A</kbd>–<kbd>Z</kbd> <kbd>0</kbd>–<kbd>9</kbd></td><td data-i18n="help.hotkey">Fire that cue without moving standby</td></tr>
+          <tr><td><kbd>Del</kbd></td><td data-i18n="help.delete">Delete the standby cue</td></tr>
+          <tr><td><kbd>Ctrl</kbd> <kbd>Z</kbd></td><td data-i18n="help.undo">Undo the last deletion</td></tr>
+          <tr><td><kbd>Ctrl</kbd> <kbd>F</kbd></td><td data-i18n="help.search">Jump to search</td></tr>
+        </table>
       </section>
     </div>
     <div class="dialog-foot"><button id="closeSettings2" class="btn primary" type="button"><span data-i18n="close">Close</span></button></div>
@@ -250,15 +262,44 @@
       <ol class="setup-list">
         <li data-i18n="setup.s1">Create a Firebase project and add a Web app.</li>
         <li data-i18n="setup.s2">Paste the config into firebase-config.js.</li>
-        <li data-i18n="setup.s3">Enable Email/Password sign-in and disable sign-up.</li>
-        <li data-i18n="setup.s4">Add a crew user in Authentication.</li>
-        <li data-i18n="setup.s5">Create Firestore and Storage, then apply the rules files.</li>
+        <li data-i18n="setup.s3">Create Firestore: Standard edition, database ID (default), region asia-east2, production mode.</li>
+        <li data-i18n="setup.s4">Enable Email/Password sign-in and disable sign-up.</li>
+        <li data-i18n="setup.s5">Add a crew user in Authentication.</li>
         <li data-i18n="setup.s6">Add your GitHub Pages domain to Authorized domains.</li>
+        <li data-i18n="setup.s7">Skip Storage. Put audio files in the repository audio folder.</li>
       </ol>
-      <h3 data-i18n="setup.fs">Firestore rules</h3><pre id="fsRules" class="code-block"></pre><button id="copyFs" class="btn small" type="button"><span data-i18n="setup.copy">Copy</span></button>
-      <h3 data-i18n="setup.st">Storage rules</h3><pre id="stRules" class="code-block"></pre><button id="copySt" class="btn small" type="button"><span data-i18n="setup.copy">Copy</span></button>
+      <h3 data-i18n="setup.fs">Firestore rules</h3>
+      <pre id="fsRules" class="code-block"></pre>
+      <button id="copyFs" class="btn small" type="button"><span data-i18n="setup.copy">Copy</span></button>
     </div>
     <div class="dialog-foot"><button id="closeSetup2" class="btn primary" type="button"><span data-i18n="close">Close</span></button></div>
+  </div>
+</div>
+
+<div id="picker" class="modal hidden">
+  <div class="dialog-panel">
+    <div class="dialog-head"><svg class="ic" width="17" height="17"><use href="#i-link"/></svg><h2 data-i18n="src.pickerTitle">Link audio file</h2><div class="spacer"></div><button id="closePicker" class="icon-btn" type="button"><svg class="ic" width="16" height="16"><use href="#i-close"/></svg></button></div>
+    <div class="dialog-body">
+      <section class="settings-section">
+        <h3><span data-i18n="src.repoFiles">Repository files</span> <span id="pickerFolder" class="mono muted"></span></h3>
+        <div id="pickerList" class="picker-list"></div>
+      </section>
+      <section class="settings-section">
+        <h3 data-i18n="src.byPath">By path</h3>
+        <div class="inline-form"><input id="pickerPath" type="text" placeholder="audio/rain.mp3"><button id="pickerPathBtn" class="btn small primary" type="button"><span data-i18n="src.use">Use</span></button></div>
+        <p class="hint-text" data-i18n="src.pathHint">Relative to this page, or a full https URL.</p>
+      </section>
+      <section class="settings-section">
+        <h3 data-i18n="src.byUrl">External URL</h3>
+        <div class="inline-form"><input id="pickerUrl" type="text" placeholder="https://example.com/rain.mp3"><button id="pickerUrlBtn" class="btn small" type="button"><span data-i18n="src.use">Use</span></button></div>
+        <p class="hint-text" data-i18n="src.corsHint">The host must allow cross-origin requests (CORS).</p>
+      </section>
+      <section id="pickerLocalRow" class="settings-section hidden">
+        <h3 data-i18n="src.localFile">Local file (offline desk only)</h3>
+        <button id="pickerLocalBtn" class="btn small" type="button"><svg class="ic" width="14" height="14"><use href="#i-upload"/></svg><span data-i18n="src.chooseFile">Choose file</span></button>
+      </section>
+    </div>
+    <div class="dialog-foot"><button id="closePicker2" class="btn" type="button"><span data-i18n="close">Close</span></button></div>
   </div>
 </div>
 
