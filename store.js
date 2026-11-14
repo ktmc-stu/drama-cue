@@ -1,169 +1,50 @@
-/* Two interchangeable backends: Firebase cloud, or a fully working offline desk. */
-import { initializeApp } from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-app.js';
-import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut, setPersistence,
-         browserLocalPersistence, browserSessionPersistence, updatePassword }
-  from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-auth.js';
-import { getFirestore, collection, doc, addDoc, setDoc, updateDoc, deleteDoc, getDoc,
-         onSnapshot, query, orderBy }
-  from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js';
-import { getStorage, ref as sRef, uploadBytesResumable, getDownloadURL }
-  from 'https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js';
-import { firebaseConfig } from './firebase-config.js';
-import { bytesGet, bytesPut } from './audio.js';
-
-export const cloudConfigured = () =>
-  !!firebaseConfig.apiKey && !String(firebaseConfig.apiKey).startsWith('YOUR_');
-
-let fb = null, auth = null, db = null, storage = null;
-if(cloudConfigured()){
-  fb = initializeApp(firebaseConfig);
-  auth = getAuth(fb); db = getFirestore(fb); storage = getStorage(fb);
-}
-export const cloudAuth = () => auth;
-export const watchAuth = cb => auth ? onAuthStateChanged(auth, cb) : (() => {});
-export async function cloudSignIn(email, pass, remember){
-  await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
-  return signInWithEmailAndPassword(auth, email, pass);
-}
-export const cloudSignOut = () => auth ? signOut(auth) : Promise.resolve();
-export const cloudPassword = p => updatePassword(auth.currentUser, p);
-
-/* ── local passcode gate ── */
-const GATE = 'dc.local.gate';
-const rndSalt = () => [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2,'0')).join('');
-async function hash(pass, salt){
-  const data = new TextEncoder().encode(salt + ':' + pass);
-  if(globalThis.crypto?.subtle){
-    const d = await crypto.subtle.digest('SHA-256', data);
-    return [...new Uint8Array(d)].map(b => b.toString(16).padStart(2,'0')).join('');
-  }
-  let h = 0x811c9dc5; for(const b of data){ h ^= b; h = Math.imul(h, 0x01000193) >>> 0; }
-  return 'fnv' + h.toString(16);
-}
-export const localGateExists = () => !!localStorage.getItem(GATE);
-export async function localSetPasscode(pass){
-  const salt = rndSalt();
-  localStorage.setItem(GATE, JSON.stringify({ salt, hash: await hash(pass, salt) }));
-}
-export async function localVerify(pass){
-  try{
-    const g = JSON.parse(localStorage.getItem(GATE) || 'null');
-    return !!g && (await hash(pass, g.salt)) === g.hash;
-  }catch{ return false; }
-}
-export function localSession(on, keep){
-  if(on){ sessionStorage.setItem('dc.session','local'); if(keep) localStorage.setItem('dc.local.keep','1'); }
-  else { sessionStorage.removeItem('dc.session'); localStorage.removeItem('dc.local.keep'); }
-}
-export const localSessionActive = () =>
-  localGateExists() && (sessionStorage.getItem('dc.session') === 'local' || localStorage.getItem('dc.local.keep') === '1');
-
-/* ── offline backend ── */
-const LSHOWS = 'dc.local.shows', LSET = 'dc.local.settings';
-const read = (k, d) => { try{ return JSON.parse(localStorage.getItem(k)) ?? d; }catch{ return d; } };
-
-export class LocalStore {
-  constructor(){ this.mode = 'local'; this.user = null; this.listeners = new Set(); }
-  async init(){}
-  _emit(){ this.listeners.forEach(fn => fn()); }
-  _all(){ return read(LSHOWS, []); }
-  _write(list){ localStorage.setItem(LSHOWS, JSON.stringify(list)); this._emit(); }
-  watchShows(cb){
-    const run = () => cb(this._all().map(s => ({ id:s.id, name:s.name, updatedAt:s.updatedAt })).sort((a,b) => a.createdAt-b.createdAt));
-    this.listeners.add(run); queueMicrotask(run);
-    return () => this.listeners.delete(run);
-  }
-  watchShow(id, cb){
-    const run = () => { const s = this._all().find(x => x.id === id); if(s) cb(structuredClone(s)); };
-    this.listeners.add(run); queueMicrotask(run);
-    return () => this.listeners.delete(run);
-  }
-  async create(name, cues){
-    const id = 's' + Date.now().toString(36) + Math.random().toString(36).slice(2,6);
-    const list = this._all();
-    list.push({ id, name, cues, rev:1, createdAt:Date.now(), updatedAt:Date.now() });
-    this._write(list); return id;
-  }
-  async put(show){
-    const list = this._all(), i = list.findIndex(s => s.id === show.id);
-    if(i < 0) return;
-    list[i] = { ...list[i], name:show.name, cues:show.cues, rev:show.rev, updatedAt:Date.now() };
-    this._write(list);
-  }
-  async remove(id){ this._write(this._all().filter(s => s.id !== id)); }
-  async settings(){ return read(LSET, {}); }
-  async saveSettings(patch){ localStorage.setItem(LSET, JSON.stringify({ ...read(LSET,{}), ...patch })); }
-  async importAudio(file, onProgress){
-    const key = 'local/' + Date.now().toString(36) + Math.random().toString(36).slice(2,7);
-    const buf = await file.arrayBuffer();
-    onProgress && onProgress(60);
-    await bytesPut(key, buf);
-    onProgress && onProgress(100);
-    return { kind:'local', key, name:file.name, size:file.size };
-  }
-  async loadBytes(f){
-    if(f.kind === 'local'){
-      const b = await bytesGet(f.key);
-      if(!b) throw new Error('missing local file');
-      return b;
-    }
-    return fetchBytes(f.url);
-  }
-  async signOut(){ localSession(false); }
-}
-
-async function fetchBytes(url){
-  const ck = 'cache/' + url;
-  const hit = await bytesGet(ck);
-  if(hit) return hit;
-  const r = await fetch(url);
-  if(!r.ok) throw new Error('HTTP ' + r.status);
-  const b = await r.arrayBuffer();
-  bytesPut(ck, b.slice(0));
-  return b;
-}
-
-/* ── cloud backend ── */
-export class CloudStore {
-  constructor(user){ this.mode = 'cloud'; this.user = user; this.urls = new Map(); }
-  async init(){}
-  watchShows(cb){
-    return onSnapshot(query(collection(db,'shows'), orderBy('createdAt','asc')),
-      snap => cb(snap.docs.map(d => ({ id:d.id, name:d.data().name || 'Show', updatedAt:d.data().updatedAt || 0 }))),
-      err => console.error(err));
-  }
-  watchShow(id, cb){
-    return onSnapshot(doc(db,'shows',id),
-      snap => { if(snap.exists()) cb({ id, ...snap.data() }); },
-      err => console.error(err));
-  }
-  async create(name, cues){
-    const r = await addDoc(collection(db,'shows'),
-      { name, cues, rev:1, createdAt:Date.now(), updatedAt:Date.now(), owner:this.user.uid });
-    return r.id;
-  }
-  async put(show){
-    await updateDoc(doc(db,'shows',show.id),
-      { name:show.name, cues:show.cues, rev:show.rev, updatedAt:Date.now() });
-  }
-  async remove(id){ await deleteDoc(doc(db,'shows',id)); }
-  async settings(){
-    const s = await getDoc(doc(db,'userSettings',this.user.uid));
-    return s.exists() ? s.data() : {};
-  }
-  async saveSettings(patch){ await setDoc(doc(db,'userSettings',this.user.uid), patch, { merge:true }); }
-  async importAudio(file, onProgress){
-    const path = `audio/${this.user.uid}/${Date.now()}_${file.name.replace(/[^\w.\-]+/g,'_')}`;
-    const task = uploadBytesResumable(sRef(storage, path), file, { contentType:file.type || 'audio/mpeg' });
-    await new Promise((res, rej) => task.on('state_changed',
-      s => onProgress && onProgress(Math.round(s.bytesTransferred / s.totalBytes * 100)), rej, res));
-    return { kind:'cloud', path, name:file.name, size:file.size };
-  }
-  async loadBytes(f){
-    if(f.kind === 'url') return fetchBytes(f.url);
-    let u = this.urls.get(f.path);
-    if(!u){ u = await getDownloadURL(sRef(storage, f.path)); this.urls.set(f.path, u); }
-    return fetchBytes(u);
-  }
-  async signOut(){ await cloudSignOut(); }
-}
+window.DC = window.DC || {};
+(function(DC){
+"use strict";
+var CFG=window.DC_CONFIG||{};
+function cloudConfigured(){return !!CFG.apiKey&&String(CFG.apiKey).indexOf("YOUR_")!==0;}
+var fbPromise=null;
+function loadScript(src){return new Promise(function(res,rej){var s=document.createElement("script");s.src=src;s.onload=res;s.onerror=function(){rej(new Error("load"));};document.head.appendChild(s);});}
+function loadFirebase(){if(fbPromise)return fbPromise;fbPromise=(async function(){var base="https://www.gstatic.com/firebasejs/10.12.2/";await loadScript(base+"firebase-app-compat.js");await Promise.all([loadScript(base+"firebase-auth-compat.js"),loadScript(base+"firebase-firestore-compat.js"),loadScript(base+"firebase-storage-compat.js")]);var app=firebase.apps.length?firebase.app():firebase.initializeApp(CFG);return{auth:firebase.auth(),db:firebase.firestore(),storage:firebase.storage()};})();return fbPromise;}
+var GATE="dc.local.gate.v3";
+function rndSalt(){return Array.from(crypto.getRandomValues(new Uint8Array(12))).map(function(b){return b.toString(16).padStart(2,"0");}).join("");}
+async function hashCode(pass,salt){var data=new TextEncoder().encode(salt+":"+pass);if(window.crypto&&crypto.subtle){var d=await crypto.subtle.digest("SHA-256",data);return Array.from(new Uint8Array(d)).map(function(b){return b.toString(16).padStart(2,"0");}).join("");}var h=0x811c9dc5;for(var i=0;i<data.length;i++){h^=data[i];h=Math.imul(h,0x01000193)>>>0;}return"fnv"+h.toString(16);}
+function localGateExists(){return !!localStorage.getItem(GATE);}
+async function localSetPasscode(pass){var salt=rndSalt();localStorage.setItem(GATE,JSON.stringify({salt:salt,hash:await hashCode(pass,salt)}));}
+async function localVerify(pass){try{var g=JSON.parse(localStorage.getItem(GATE)||"null");return !!g&&await hashCode(pass,g.salt)===g.hash;}catch(e){return false;}}
+function localSession(on,keep){if(on){sessionStorage.setItem("dc.session","local");if(keep)localStorage.setItem("dc.local.keep","1");}else{sessionStorage.removeItem("dc.session");localStorage.removeItem("dc.local.keep");}}
+function localSessionActive(){return localGateExists()&&(sessionStorage.getItem("dc.session")==="local"||localStorage.getItem("dc.local.keep")==="1");}
+function readLS(k,d){try{var v=JSON.parse(localStorage.getItem(k));return v==null?d:v;}catch(e){return d;}}
+function clone(o){return JSON.parse(JSON.stringify(o));}
+function LocalStore(){this.mode="local";this.user=null;this.listeners=new Set();}
+LocalStore.prototype.init=async function(){};
+LocalStore.prototype._emit=function(){this.listeners.forEach(function(fn){fn();});};
+LocalStore.prototype._all=function(){return readLS("dc.local.shows.v3",[]);};
+LocalStore.prototype._write=function(list){localStorage.setItem("dc.local.shows.v3",JSON.stringify(list));this._emit();};
+LocalStore.prototype.watchShows=function(cb){var self=this,run=function(){cb(self._all().map(function(s){return{id:s.id,name:s.name,updatedAt:s.updatedAt,createdAt:s.createdAt};}).sort(function(a,b){return a.createdAt-b.createdAt;}));};this.listeners.add(run);queueMicrotask(run);return function(){self.listeners.delete(run);};};
+LocalStore.prototype.watchShow=function(id,cb){var self=this,run=function(){var s=self._all().find(function(x){return x.id===id;});if(s)cb(clone(s));};this.listeners.add(run);queueMicrotask(run);return function(){self.listeners.delete(run);};};
+LocalStore.prototype.create=async function(name,cues){var id="s"+Date.now().toString(36)+Math.random().toString(36).slice(2,6),list=this._all();list.push({id:id,name:name,cues:cues,rev:1,createdAt:Date.now(),updatedAt:Date.now()});this._write(list);return id;};
+LocalStore.prototype.put=async function(show){var list=this._all(),i=list.findIndex(function(s){return s.id===show.id;});if(i<0)return;list[i]=Object.assign({},list[i],{name:show.name,cues:show.cues,rev:show.rev,updatedAt:Date.now()});this._write(list);};
+LocalStore.prototype.remove=async function(id){this._write(this._all().filter(function(s){return s.id!==id;}));};
+LocalStore.prototype.settings=async function(){return readLS("dc.local.settings.v3",{});};
+LocalStore.prototype.saveSettings=async function(patch){localStorage.setItem("dc.local.settings.v3",JSON.stringify(Object.assign({},readLS("dc.local.settings.v3",{}),patch)));};
+LocalStore.prototype.importAudio=async function(file,onProgress){var key="local/"+Date.now().toString(36)+Math.random().toString(36).slice(2,7),buf=await file.arrayBuffer();if(onProgress)onProgress(60);await bytesPut(key,buf);if(onProgress)onProgress(100);return{kind:"local",key:key,name:file.name,size:file.size};};
+LocalStore.prototype.loadBytes=async function(f){if(f.kind==="local"){var b=await bytesGet(f.key);if(!b)throw new Error("missing");return b;}return fetchBytes(f.url);};
+LocalStore.prototype.signOut=async function(){localSession(false);};
+async function fetchBytes(url){var ck="cache/"+url,hit=await bytesGet(ck);if(hit)return hit;var r=await fetch(url);if(!r.ok)throw new Error("HTTP "+r.status);var b=await r.arrayBuffer();bytesPut(ck,b.slice(0));return b;}
+function CloudStore(user){this.mode="cloud";this.user=user;this.urls=new Map();this.fb=null;}
+CloudStore.prototype.init=async function(){this.fb=await loadFirebase();};
+CloudStore.prototype.signIn=async function(email,pass,remember){this.fb=await loadFirebase();await this.fb.auth.setPersistence(remember?firebase.auth.Auth.Persistence.LOCAL:firebase.auth.Auth.Persistence.SESSION);var cred=await this.fb.auth.signInWithEmailAndPassword(email,pass);this.user=cred.user;return cred.user;};
+CloudStore.prototype.watchShows=function(cb){return this.fb.db.collection("shows").orderBy("createdAt","asc").onSnapshot(function(snap){cb(snap.docs.map(function(d){return Object.assign({id:d.id},d.data());}));},function(e){console.error(e);});};
+CloudStore.prototype.watchShow=function(id,cb){return this.fb.db.collection("shows").doc(id).onSnapshot(function(snap){if(snap.exists)cb(Object.assign({id:id},snap.data()));});};
+CloudStore.prototype.create=async function(name,cues){var r=await this.fb.db.collection("shows").add({name:name,cues:cues,rev:1,createdAt:Date.now(),updatedAt:Date.now(),owner:this.user.uid});return r.id;};
+CloudStore.prototype.put=async function(show){await this.fb.db.collection("shows").doc(show.id).update({name:show.name,cues:show.cues,rev:show.rev,updatedAt:Date.now()});};
+CloudStore.prototype.remove=async function(id){await this.fb.db.collection("shows").doc(id).delete();};
+CloudStore.prototype.settings=async function(){var s=await this.fb.db.collection("userSettings").doc(this.user.uid).get();return s.exists?s.data():{};};
+CloudStore.prototype.saveSettings=async function(patch){await this.fb.db.collection("userSettings").doc(this.user.uid).set(patch,{merge:true});};
+CloudStore.prototype.importAudio=async function(file,onProgress){var path="audio/"+this.user.uid+"/"+Date.now()+"_"+file.name.replace(/[^\w.\-]+/g,"_"),task=this.fb.storage.ref(path).put(file,{contentType:file.type||"audio/mpeg"});await new Promise(function(res,rej){task.on("state_changed",function(s){if(onProgress)onProgress(Math.round(s.bytesTransferred/s.totalBytes*100));},rej,res);});return{kind:"cloud",path:path,name:file.name,size:file.size};};
+CloudStore.prototype.loadBytes=async function(f){if(f.kind==="url")return fetchBytes(f.url);var u=this.urls.get(f.path);if(!u){u=await this.fb.storage.ref(f.path).getDownloadURL();this.urls.set(f.path,u);}return fetchBytes(u);};
+CloudStore.prototype.signOut=async function(){await this.fb.auth.signOut();};
+var bytesGet=DC.audio.bytesGet,bytesPut=DC.audio.bytesPut;
+DC.store={cloudConfigured:cloudConfigured,loadFirebase:loadFirebase,LocalStore:LocalStore,CloudStore:CloudStore,localGateExists:localGateExists,localSetPasscode:localSetPasscode,localVerify:localVerify,localSession:localSession,localSessionActive:localSessionActive};
+})(window.DC);
