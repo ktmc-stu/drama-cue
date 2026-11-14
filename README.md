@@ -1,38 +1,58 @@
-# 🎭 Drama Cue — QLab-style sound effect playback (English / 繁體中文)
+# Drama Cue
 
-Internal sound desk for drama performances. Static web app (GitHub Pages) + Firebase.
-Password-locked; cue lists sync in realtime; audio is preloaded for instant, low-latency GO.
+A cue-based sound playback desk for theatre, in the spirit of QLab's audio workflow.
+Static front end (GitHub Pages) + Firebase. English and 繁體中文（香港書面語）, switchable in Settings.
+All interface glyphs are inline SVG icons — no emoji.
 
-## Features
-- Cue list: **Audio / Fade / Stop / Wait / Memo**, drag-to-reorder, duplicate, hotkeys
-- Standby pointer + **GO** (Space), **PANIC** (Esc, fade-out), Pause all / Stop all
-- Per cue: volume (dB), pan, fade in, fade out on stop, loop, rate, trim in/out, stop-others
-- Continue modes: Manual / Auto-follow (after finish) / Auto-continue (immediately, with delay)
-- Live panel: elapsed / remaining, progress, live volume, pause, stop; master volume + meter
-- Multiple shows, JSON export/import, output-device selection (Chromium), offline audio cache
-- Language: English / 繁體中文（香港書面語）— Settings → Language
+## Runs immediately
 
-## 1. Firebase setup
-1. Create a Firebase project → add a **Web app** → copy the config into `firebase-config.js`.
+Open the app and choose **Offline desk**. Create a local passcode (4+ characters) and you are in a
+fully working console seeded with two shows: *The Storm — Act I* (16 cues) and *Curtain Call* (4 cues).
+Every seeded sound is synthesised in the browser with the Web Audio API, so GO produces real audio
+with no uploads, no network and no Firebase project. Cue sheets persist in this browser; uploaded
+files persist in IndexedDB.
+
+Press **Preload** then **Space** to run the sheet. **Esc** fades everything out.
+
+## What it does
+
+- Cue types: **Audio, Fade, Stop, Wait, Memo**
+- Standby pointer, **GO** (Space), **Panic** (Esc), pause all, stop all, back to top, show clock
+- Per cue: level (dB), pan, fade in, fade out on stop, loop, rate, trim in/out, stop-others, hotkey, notes
+- Waveform inspector: drag the amber markers to trim, click anywhere to audition from that point
+- Continue modes: Manual, Auto-follow (on finish), Auto-continue (immediate, with delay)
+- Live channel rack: elapsed / remaining, progress, per-channel meter, live level, pause, stop
+- Master fader, master meter, single-action **Mute** in the top rail
+- Search, type filter, flag filter, sort + direction, built-in and user-saved views
+- Bulk selection (shift-click ranges), bulk duplicate, bulk delete, **Undo** (toast or Ctrl+Z)
+- Drag to reorder, drag-and-drop audio to create cues, JSON export / import
+- Multiple shows, realtime cloud sync, per-cue preload state dots, offline audio byte cache
+- Output device selection (Chromium), idle auto-lock, reduced-motion switch
+
+## Cloud setup (Firebase)
+
+1. Create a Firebase project, add a **Web app**, paste its config into `firebase-config.js`.
 2. **Authentication → Sign-in method → Email/Password: Enable.**
-   In **Authentication → Settings → User actions**, disable “Enable create (sign-up)” so nobody
-   can self-register.
-3. **Authentication → Users → Add user**: e.g. `crew@your-drama.com` + a strong password.
-   Share this one account with the crew (or add one account per operator).
-4. **Firestore Database → Create database** (production mode) → Rules → paste `firestore.rules` → Publish.
+   **Authentication → Settings → User actions:** turn off "Enable create (sign-up)".
+3. **Authentication → Users → Add user** — e.g. `crew@your-company.com` with a strong password.
+   Add one account per operator, or share one crew account.
+4. **Firestore Database → Create database** (production) → Rules → paste `firestore.rules` → Publish.
 5. **Storage → Get started** → Rules → paste `storage.rules` → Publish.
-   *Note: new projects may need the Blaze plan to provision Cloud Storage. If you prefer to stay
-   on the free Spark plan, skip Storage and use the “URL or repo path” field instead (see below).*
-6. **Authentication → Settings → Authorized domains → Add domain**: `YOUR-NAME.github.io`
-   (and `localhost` for testing).
+   New projects may need the Blaze plan to provision Cloud Storage. To stay on the free Spark plan,
+   skip Storage and use the inspector's **URL or repo path** field instead.
+6. **Authentication → Settings → Authorized domains → Add domain:** `YOUR-NAME.github.io`
+   (`localhost` is already authorised for local testing).
 
-### Password lock 密碼鎖
-The lock is real Firebase Auth — Firestore/Storage rules reject anyone not signed in, so the data
-is protected even though the page itself is public. 🔒 button = sign out (stops all sound).
-Optional idle auto-lock in Settings (set **0** during a show).
-Forgot password: reset it in Firebase console → Authentication → Users.
+### The password lock
 
-## 2. Deploy to GitHub
+Cloud mode uses real Firebase Authentication; Firestore and Storage rules reject every unauthenticated
+request, so cue sheets and audio stay private even though the page itself is public. The lock icon in
+the top rail signs out and stops all sound. Offline mode uses a salted SHA-256 passcode held on the
+device — it guards the local desk, not a server. Idle auto-lock is available in Settings; leave it at
+**0** during a performance.
+
+## Deploy
+
 ```bash
 git init && git add . && git commit -m "Drama Cue"
 git branch -M main
