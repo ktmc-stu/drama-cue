@@ -2,17 +2,26 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Internal use: any signed-in crew account.
-    // To lock to specific accounts only, replace crew() body with:
+    function signedIn() { return request.auth != null; }
+
+    // Company lock: swap the body for
     //   request.auth != null && request.auth.uid in ['UID_1','UID_2']
-    function crew() { return request.auth != null; }
+    // to restrict the desk to named operator accounts.
+    function crew() { return signedIn(); }
 
     match /shows/{showId} {
-      allow read, write: if crew();
+      allow read: if crew();
+      allow create: if crew()
+                    && request.resource.data.name is string
+                    && request.resource.data.cues is list
+                    && request.resource.data.cues.size() <= 800;
+      allow update, delete: if crew();
     }
+
     match /userSettings/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if signedIn() && request.auth.uid == userId;
     }
+
     match /{document=**} { allow read, write: if false; }
   }
 }
