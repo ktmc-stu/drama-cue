@@ -1,17 +1,18 @@
-/* Firebase web config. Public identifiers, not secrets.
-   Plan B: Firestore + Auth only. Cloud Storage is NOT used. */
+/* Drama Cue — Firebase web config
+   Public identifiers, not secrets. Access is controlled by
+   Firestore rules + disabled sign-up + authorized domains.
+   Plan B: Firestore + Auth only. No Storage, no Analytics. */
 window.DC_CONFIG = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  projectId: "YOUR_PROJECT",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey:            "AIzaSyCaRX9EhV129kkjY9vKERZ4JHipo2R6MzM",
+  authDomain:        "drama-cue.firebaseapp.com",
+  projectId:         "drama-cue",
+  messagingSenderId: "781940956760",
+  appId:             "1:781940956760:web:d31c7981d1369fe981f42d"
 };
 
-/* Audio source configuration.
-   useStorage:false  -> audio comes from the repo folder or an external URL (no Blaze needed)
-   folder            -> repository folder holding your audio files
-   manifest          -> filenames shown in the "Link audio" picker; keep this in sync with the folder */
+/* Audio lives in the repository, not Firebase Storage.
+   folder   = repo folder holding the files
+   manifest = filenames shown in the Link audio picker */
 window.DC_AUDIO = {
   useStorage: false,
   folder: "audio",
