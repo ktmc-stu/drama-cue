@@ -1,227 +1,41 @@
-/* Web Audio engine + IndexedDB byte cache + waveform peak analysis. */
-export const dbToGain = db => db <= -60 ? 0 : Math.pow(10, db/20);
-const clamp = (v,a,b) => Math.min(b, Math.max(a,v));
-
-const DB = 'dramacue', STORE = 'bytes';
-let dbp = null;
-function idb(){
-  if(dbp) return dbp;
-  dbp = new Promise((res,rej) => {
-    const r = indexedDB.open(DB,1);
-    r.onupgradeneeded = () => { if(!r.result.objectStoreNames.contains(STORE)) r.result.createObjectStore(STORE); };
-    r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
-  });
-  return dbp;
-}
-export async function bytesGet(key){
-  try{
-    const db = await idb();
-    return await new Promise((res,rej) => {
-      const q = db.transaction(STORE,'readonly').objectStore(STORE).get(key);
-      q.onsuccess = () => res(q.result || null); q.onerror = () => rej(q.error);
-    });
-  }catch{ return null; }
-}
-export async function bytesPut(key, value){
-  try{
-    const db = await idb();
-    await new Promise((res,rej) => {
-      const q = db.transaction(STORE,'readwrite').objectStore(STORE).put(value, key);
-      q.onsuccess = () => res(); q.onerror = () => rej(q.error);
-    });
-  }catch{}
-}
-export async function bytesDel(key){
-  try{
-    const db = await idb();
-    await new Promise(res => { const q = db.transaction(STORE,'readwrite').objectStore(STORE).delete(key); q.onsuccess = q.onerror = () => res(); });
-  }catch{}
-}
-
-export class AudioEngine {
-  constructor(){
-    this.ctx = null; this.master = null; this.analyser = null; this.streamDest = null; this.el = null;
-    this.buffers = new Map(); this.peaks = new Map(); this.instances = new Map();
-    this._seq = 1; this.masterDb = 0; this.muted = false; this.onEnded = null; this.sinkId = 'default';
-  }
-  ensure(){
-    if(this.ctx) return this.ctx;
-    const AC = window.AudioContext || window.webkitAudioContext;
-    this.ctx = new AC();
-    this.master = this.ctx.createGain();
-    this.analyser = this.ctx.createAnalyser(); this.analyser.fftSize = 1024;
-    this.master.connect(this.analyser);
-    this.analyser.connect(this.ctx.destination);
-    this.master.gain.value = this.muted ? 0 : dbToGain(this.masterDb);
-    return this.ctx;
-  }
-  async unlock(){ this.ensure(); if(this.ctx.state !== 'running'){ try{ await this.ctx.resume(); }catch{} } }
-  decode(bytes){ this.ensure(); return this.ctx.decodeAudioData(bytes); }
-  _applyMaster(){
-    if(!this.master) return;
-    const now = this.ctx.currentTime, g = this.master.gain;
-    g.cancelScheduledValues(now); g.setValueAtTime(g.value, now);
-    g.linearRampToValueAtTime(this.muted ? 0 : dbToGain(this.masterDb), now + .05);
-  }
-  setMasterDb(db){ this.masterDb = db; this._applyMaster(); }
-  setMuted(m){ this.muted = !!m; this._applyMaster(); }
-
-  async setOutput(deviceId){
-    this.ensure();
-    if(!this.el){ this.el = new Audio(); this.el.autoplay = true; }
-    if(deviceId && deviceId !== 'default'){
-      if(!this.el.setSinkId) throw new Error('unsupported');
-      if(!this.streamDest) this.streamDest = this.ctx.createMediaStreamDestination();
-      await this.el.setSinkId(deviceId);
-      this.el.srcObject = this.streamDest.stream;
-      await this.el.play().catch(()=>{});
-      try{ this.analyser.disconnect(); }catch{}
-      this.analyser.connect(this.streamDest);
-    }else{
-      try{ this.analyser.disconnect(); }catch{}
-      this.analyser.connect(this.ctx.destination);
-      this.el.srcObject = null;
-    }
-    this.sinkId = deviceId || 'default';
-  }
-
-  peaksFor(key, buf){
-    if(this.peaks.has(key)) return this.peaks.get(key);
-    const N = 1400, len = buf.length, step = Math.max(1, Math.floor(len/N));
-    const out = new Float32Array(N*2);
-    const chans = []; for(let c=0;c<Math.min(2,buf.numberOfChannels);c++) chans.push(buf.getChannelData(c));
-    for(let i=0;i<N;i++){
-      let mn = 0, mx = 0;
-      const a = i*step, b = Math.min(len, a+step);
-      for(let j=a;j<b;j+=2){
-        let v = 0; for(let c=0;c<chans.length;c++) v += chans[c][j];
-        v /= chans.length;
-        if(v < mn) mn = v; if(v > mx) mx = v;
-      }
-      out[i*2] = mn; out[i*2+1] = mx;
-    }
-    this.peaks.set(key, out);
-    return out;
-  }
-
-  _hold(p, now){
-    if(p.cancelAndHoldAtTime) p.cancelAndHoldAtTime(now);
-    else { const v = p.value; p.cancelScheduledValues(now); p.setValueAtTime(v, now); }
-  }
-  _raw(i){ return i.paused ? i.offset : i.offset + (this.ctx.currentTime - i.startAt)*i.rate; }
-  _attach(i){
-    const s = this.ctx.createBufferSource();
-    s.buffer = i.buf; s.playbackRate.value = i.rate;
-    if(i.loop){ s.loop = true; s.loopStart = i.trimIn; s.loopEnd = i.trimIn + i.region; }
-    s.connect(i.gain);
-    s.onended = () => { if(i.ignore || i.paused) return; this._remove(i); this.onEnded && this.onEnded(i); };
-    return s;
-  }
-  _remove(i){
-    this.instances.delete(i.id);
-    ['src','gain','pan','meter'].forEach(k => { try{ i[k] && i[k].disconnect(); }catch{} });
-  }
-
-  play(cue, key, offset = 0){
-    this.ensure();
-    const buf = this.buffers.get(key); if(!buf) return null;
-    const ctx = this.ctx, now = ctx.currentTime;
-    const trimIn = clamp(cue.trimIn || 0, 0, Math.max(0, buf.duration - .02));
-    const trimOut = cue.trimOut > 0 ? clamp(cue.trimOut, trimIn + .02, buf.duration) : buf.duration;
-    const region = Math.max(.02, trimOut - trimIn);
-    const off = clamp(offset, 0, region - .01);
-
-    const gain = ctx.createGain();
-    const meter = ctx.createAnalyser(); meter.fftSize = 256;
-    const pan = ctx.createStereoPanner ? ctx.createStereoPanner() : null;
-    gain.connect(meter);
-    if(pan){ pan.pan.value = clamp(cue.pan || 0, -1, 1); meter.connect(pan); pan.connect(this.master); }
-    else meter.connect(this.master);
-
-    const i = { id:'ch'+(this._seq++), cueId:cue.id, name:cue.name, buf, key, gain, pan, meter,
-      trimIn, region, rate:clamp(cue.rate || 1, .25, 4), loop:!!cue.loop, offset:off, startAt:now,
-      paused:false, manual:false, ignore:false, targetDb:cue.volume ?? 0, fadeOut:cue.fadeOut || 0 };
-    i.src = this._attach(i);
-
-    const target = Math.max(.0001, dbToGain(i.targetDb)), fi = Math.max(0, cue.fadeIn || 0);
-    i.gain.gain.setValueAtTime(fi > 0 ? .0001 : target, now);
-    if(fi > 0) i.gain.gain.linearRampToValueAtTime(target, now + fi);
-
-    if(i.loop) i.src.start(now, trimIn + off);
-    else i.src.start(now, trimIn + off, Math.max(.01, region - off));
-    this.instances.set(i.id, i);
-    return i;
-  }
-  info(i){
-    const el = this._raw(i);
-    const pos = i.loop ? el % i.region : Math.min(el, i.region);
-    return { elapsed:el, pos, remaining:Math.max(0, i.region - pos), region:i.region, paused:i.paused, loop:i.loop };
-  }
-  peakOf(i){
-    if(!i.meter || i.paused) return 0;
-    const a = new Uint8Array(i.meter.fftSize); i.meter.getByteTimeDomainData(a);
-    let p = 0; for(let k=0;k<a.length;k++) p = Math.max(p, Math.abs(a[k]-128)/128);
-    return p;
-  }
-  list(target='all'){ return [...this.instances.values()].filter(i => target === 'all' || i.cueId === target); }
-  cueIds(){ return new Set([...this.instances.values()].map(i => i.cueId)); }
-  anyPaused(){ return [...this.instances.values()].some(i => i.paused); }
-
-  pause(id){
-    const i = this.instances.get(id); if(!i || i.paused) return;
-    i.offset = this._raw(i); i.paused = true; i.ignore = true;
-    try{ i.src.stop(); }catch{}
-  }
-  unpause(id){
-    const i = this.instances.get(id); if(!i || !i.paused) return;
-    const now = this.ctx.currentTime;
-    i.paused = false; i.ignore = false; i.startAt = now;
-    i.src = this._attach(i);
-    const off = i.loop ? i.offset % i.region : clamp(i.offset, 0, i.region - .01);
-    if(i.loop) i.src.start(now, i.trimIn + off);
-    else i.src.start(now, i.trimIn + off, Math.max(.01, i.region - off));
-  }
-  toggle(id){ const i = this.instances.get(id); if(i) i.paused ? this.unpause(id) : this.pause(id); }
-  pauseAll(){ this.list().forEach(i => this.pause(i.id)); }
-  unpauseAll(){ this.list().forEach(i => this.unpause(i.id)); }
-
-  setDb(id, db){
-    const i = this.instances.get(id); if(!i) return;
-    const now = this.ctx.currentTime;
-    this._hold(i.gain.gain, now);
-    i.gain.gain.linearRampToValueAtTime(Math.max(.0001, dbToGain(db)), now + .06);
-    i.targetDb = db;
-  }
-  setCueDb(cueId, db){ this.list(cueId).forEach(i => this.setDb(i.id, db)); }
-
-  stop(id, fade = 0){
-    const i = this.instances.get(id); if(!i) return;
-    i.manual = true;
-    if(i.paused){ this._remove(i); return; }
-    const f = Math.max(0, fade), now = this.ctx.currentTime;
-    if(f > 0){ this._hold(i.gain.gain, now); i.gain.gain.linearRampToValueAtTime(.0001, now + f); }
-    try{ i.src.stop(now + f + .02); }catch{ this._remove(i); }
-  }
-  stopCue(target='all', fade=0){ this.list(target).forEach(i => this.stop(i.id, fade)); }
-  stopAll(fade=0){ this.stopCue('all', fade); }
-
-  fade(target, toDb, time, stopAtEnd){
-    const now = this.ctx.currentTime, d = Math.max(.01, time || 0);
-    this.list(target).forEach(i => {
-      this._hold(i.gain.gain, now);
-      i.gain.gain.linearRampToValueAtTime(Math.max(.0001, dbToGain(toDb)), now + d);
-      i.targetDb = toDb;
-      if(stopAtEnd){
-        i.manual = true;
-        if(i.paused) setTimeout(() => this._remove(i), d*1000);
-        else { try{ i.src.stop(now + d + .03); }catch{ this._remove(i); } }
-      }
-    });
-  }
-  level(){
-    if(!this.analyser || this.muted) return 0;
-    const a = new Uint8Array(this.analyser.fftSize); this.analyser.getByteTimeDomainData(a);
-    let p = 0; for(let k=0;k<a.length;k++) p = Math.max(p, Math.abs(a[k]-128)/128);
-    return p;
-  }
-}
+window.DC = window.DC || {};
+(function(DC){
+"use strict";
+function dbToGain(db){return db<=-60?0:Math.pow(10,db/20);}
+function idb(){return new Promise(function(res,rej){var r=indexedDB.open("dramacue",1);r.onupgradeneeded=function(){if(!r.result.objectStoreNames.contains("bytes"))r.result.createObjectStore("bytes");};r.onsuccess=function(){res(r.result);};r.onerror=function(){rej(r.error);};});}
+function bytesGet(k){return idb().then(function(db){return new Promise(function(res,rej){var q=db.transaction("bytes","readonly").objectStore("bytes").get(k);q.onsuccess=function(){res(q.result||null);};q.onerror=function(){rej(q.error);};});}).catch(function(){return null;});}
+function bytesPut(k,v){return idb().then(function(db){return new Promise(function(res,rej){var q=db.transaction("bytes","readwrite").objectStore("bytes").put(v,k);q.onsuccess=function(){res();};q.onerror=function(){rej(q.error);};});}).catch(function(){});}
+function clamp(v,a,b){return Math.min(b,Math.max(a,v));}
+function AudioEngine(){this.ctx=null;this.master=null;this.analyser=null;this.streamDest=null;this.el=null;this.buffers=new Map();this.peaks=new Map();this.instances=new Map();this._seq=1;this.masterDb=0;this.muted=false;this.onEnded=null;}
+AudioEngine.prototype.ensure=function(){if(this.ctx)return this.ctx;var AC=window.AudioContext||window.webkitAudioContext;this.ctx=new AC();this.master=this.ctx.createGain();this.analyser=this.ctx.createAnalyser();this.analyser.fftSize=1024;this.master.connect(this.analyser);this.analyser.connect(this.ctx.destination);this.master.gain.value=this.muted?0:dbToGain(this.masterDb);return this.ctx;};
+AudioEngine.prototype.unlock=function(){this.ensure();return this.ctx.state!=="running"?this.ctx.resume().catch(function(){}):Promise.resolve();};
+AudioEngine.prototype.decode=function(b){this.ensure();return this.ctx.decodeAudioData(b);};
+AudioEngine.prototype._applyMaster=function(){if(!this.master)return;var now=this.ctx.currentTime,g=this.master.gain;g.cancelScheduledValues(now);g.setValueAtTime(g.value,now);g.linearRampToValueAtTime(this.muted?0:dbToGain(this.masterDb),now+.05);};
+AudioEngine.prototype.setMasterDb=function(db){this.masterDb=db;this._applyMaster();};
+AudioEngine.prototype.setMuted=function(m){this.muted=!!m;this._applyMaster();};
+AudioEngine.prototype.setOutput=function(deviceId){this.ensure();var self=this;if(!this.el)this.el=new Audio();if(deviceId&&deviceId!=="default"){if(!this.el.setSinkId)return Promise.reject(new Error("unsupported"));if(!this.streamDest)this.streamDest=this.ctx.createMediaStreamDestination();return this.el.setSinkId(deviceId).then(function(){self.el.srcObject=self.streamDest.stream;return self.el.play().catch(function(){});}).then(function(){try{self.analyser.disconnect();}catch(e){}self.analyser.connect(self.streamDest);});}try{this.analyser.disconnect();}catch(e){}this.analyser.connect(this.ctx.destination);this.el.srcObject=null;return Promise.resolve();};
+AudioEngine.prototype.peaksFor=function(key,buf){if(this.peaks.has(key))return this.peaks.get(key);var N=1200,len=buf.length,step=Math.max(1,Math.floor(len/N)),out=new Float32Array(N*2),chans=[],c;for(c=0;c<Math.min(2,buf.numberOfChannels);c++)chans.push(buf.getChannelData(c));for(var i=0;i<N;i++){var mn=0,mx=0,a=i*step,b=Math.min(len,a+step);for(var j=a;j<b;j+=2){var v=0;for(c=0;c<chans.length;c++)v+=chans[c][j];v/=chans.length;if(v<mn)mn=v;if(v>mx)mx=v;}out[i*2]=mn;out[i*2+1]=mx;}this.peaks.set(key,out);return out;};
+AudioEngine.prototype._hold=function(p,now){if(p.cancelAndHoldAtTime)p.cancelAndHoldAtTime(now);else{var v=p.value;p.cancelScheduledValues(now);p.setValueAtTime(v,now);}};
+AudioEngine.prototype._raw=function(i){return i.paused?i.offset:i.offset+(this.ctx.currentTime-i.startAt)*i.rate;};
+AudioEngine.prototype._attach=function(i){var s=this.ctx.createBufferSource(),self=this;s.buffer=i.buf;s.playbackRate.value=i.rate;if(i.loop){s.loop=true;s.loopStart=i.trimIn;s.loopEnd=i.trimIn+i.region;}s.connect(i.gain);s.onended=function(){if(i.ignore||i.paused)return;self._remove(i);if(self.onEnded)self.onEnded(i);};return s;};
+AudioEngine.prototype._remove=function(i){this.instances.delete(i.id);["src","gain","pan","meter"].forEach(function(k){try{if(i[k])i[k].disconnect();}catch(e){}});};
+AudioEngine.prototype.play=function(cue,key,offset){this.ensure();var buf=this.buffers.get(key);if(!buf)return null;var ctx=this.ctx,now=ctx.currentTime,trimIn=clamp(cue.trimIn||0,0,Math.max(0,buf.duration-.02)),trimOut=cue.trimOut>0?clamp(cue.trimOut,trimIn+.02,buf.duration):buf.duration,region=Math.max(.02,trimOut-trimIn),off=clamp(offset||0,0,region-.01),gain=ctx.createGain(),meter=ctx.createAnalyser(),pan=ctx.createStereoPanner?ctx.createStereoPanner():null;meter.fftSize=256;gain.connect(meter);if(pan){pan.pan.value=clamp(cue.pan||0,-1,1);meter.connect(pan);pan.connect(this.master);}else meter.connect(this.master);var i={id:"ch"+this._seq++,cueId:cue.id,name:cue.name,buf:buf,key:key,gain:gain,pan:pan,meter:meter,trimIn:trimIn,region:region,rate:clamp(cue.rate||1,.25,4),loop:!!cue.loop,offset:off,startAt:now,paused:false,manual:false,ignore:false,targetDb:cue.volume==null?0:cue.volume,fadeOut:cue.fadeOut||0};i.src=this._attach(i);var target=Math.max(.0001,dbToGain(i.targetDb)),fi=Math.max(0,cue.fadeIn||0);i.gain.gain.setValueAtTime(fi>0?.0001:target,now);if(fi>0)i.gain.gain.linearRampToValueAtTime(target,now+fi);if(i.loop)i.src.start(now,trimIn+off);else i.src.start(now,trimIn+off,Math.max(.01,region-off));this.instances.set(i.id,i);return i;};
+AudioEngine.prototype.info=function(i){var el=this._raw(i),pos=i.loop?el%i.region:Math.min(el,i.region);return{pos:pos,region:i.region,paused:i.paused};};
+AudioEngine.prototype.peakOf=function(i){if(!i.meter||i.paused)return 0;var a=new Uint8Array(i.meter.fftSize);i.meter.getByteTimeDomainData(a);var p=0;for(var k=0;k<a.length;k++)p=Math.max(p,Math.abs(a[k]-128)/128);return p;};
+AudioEngine.prototype.list=function(target){return Array.from(this.instances.values()).filter(function(i){return !target||target==="all"||i.cueId===target;});};
+AudioEngine.prototype.cueIds=function(){return new Set(this.list().map(function(i){return i.cueId;}));};
+AudioEngine.prototype.anyPaused=function(){return this.list().some(function(i){return i.paused;});};
+AudioEngine.prototype.pause=function(id){var i=this.instances.get(id);if(!i||i.paused)return;i.offset=this._raw(i);i.paused=true;i.ignore=true;try{i.src.onended=null;i.src.stop();}catch(e){}};
+AudioEngine.prototype.unpause=function(id){var i=this.instances.get(id);if(!i||!i.paused)return;var now=this.ctx.currentTime;i.paused=false;i.ignore=false;i.startAt=now;i.src=this._attach(i);var off=i.loop?i.offset%i.region:clamp(i.offset,0,i.region-.01);if(i.loop)i.src.start(now,i.trimIn+off);else i.src.start(now,i.trimIn+off,Math.max(.01,i.region-off));};
+AudioEngine.prototype.toggle=function(id){var i=this.instances.get(id);if(i)i.paused?this.unpause(id):this.pause(id);};
+AudioEngine.prototype.pauseAll=function(){this.list().forEach(function(i){this.pause(i.id);},this);};
+AudioEngine.prototype.unpauseAll=function(){this.list().forEach(function(i){this.unpause(i.id);},this);};
+AudioEngine.prototype.setDb=function(id,db){var i=this.instances.get(id);if(!i)return;var now=this.ctx.currentTime;this._hold(i.gain.gain,now);i.gain.gain.linearRampToValueAtTime(Math.max(.0001,dbToGain(db)),now+.06);i.targetDb=db;};
+AudioEngine.prototype.setCueDb=function(cueId,db){this.list(cueId).forEach(function(i){this.setDb(i.id,db);},this);};
+AudioEngine.prototype.stop=function(id,fade){var i=this.instances.get(id);if(!i)return;i.manual=true;if(i.paused){this._remove(i);return;}var f=Math.max(0,fade||0),now=this.ctx.currentTime;if(f>0){this._hold(i.gain.gain,now);i.gain.gain.linearRampToValueAtTime(.0001,now+f);}try{i.src.stop(now+f+.02);}catch(e){this._remove(i);}};
+AudioEngine.prototype.stopCue=function(target,fade){this.list(target).forEach(function(i){this.stop(i.id,fade);},this);};
+AudioEngine.prototype.stopAll=function(fade){this.stopCue("all",fade);};
+AudioEngine.prototype.fade=function(target,toDb,time,stopAtEnd){var now=this.ctx.currentTime,d=Math.max(.01,time||0),self=this;this.list(target).forEach(function(i){self._hold(i.gain.gain,now);i.gain.gain.linearRampToValueAtTime(Math.max(.0001,dbToGain(toDb)),now+d);i.targetDb=toDb;if(stopAtEnd){i.manual=true;if(i.paused)setTimeout(function(){self._remove(i);},d*1000);else try{i.src.stop(now+d+.03);}catch(e){self._remove(i);}}});};
+AudioEngine.prototype.level=function(){if(!this.analyser||this.muted)return 0;var a=new Uint8Array(this.analyser.fftSize);this.analyser.getByteTimeDomainData(a);var p=0;for(var k=0;k<a.length;k++)p=Math.max(p,Math.abs(a[k]-128)/128);return p;};
+DC.audio={AudioEngine:AudioEngine,dbToGain:dbToGain,bytesGet:bytesGet,bytesPut:bytesPut};
+})(window.DC);
