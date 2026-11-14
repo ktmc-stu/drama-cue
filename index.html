@@ -1,169 +1,306 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drama Cue</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Drama Cue — Sound Playback Console</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'><rect width='24' height='24' rx='5' fill='%230B0D12'/><g fill='none' stroke='%23FFB020' stroke-width='1.6' stroke-linecap='round'><path d='M4 19V8l8-3.5L20 8v11'/><path d='M8 19v-4M11 19v-7M14 19v-5M17 19v-3'/></g></svg>">
 </head>
 <body>
-<noscript>This app requires JavaScript / 此系統需要 JavaScript。</noscript>
 
-<!-- ============ LOGIN / PASSWORD LOCK ============ -->
-<div id="loginView" class="login-wrap hidden">
-  <form id="loginForm" class="card login-card">
-    <h1>🎭 <span data-i18n="app.title">Drama Cue</span></h1>
-    <p class="muted" data-i18n="login.subtitle"></p>
-    <label class="f"><span class="fl" data-i18n="login.email"></span>
-      <input id="loginEmail" type="email" autocomplete="username" required></label>
-    <label class="f"><span class="fl" data-i18n="login.password"></span>
-      <input id="loginPassword" type="password" autocomplete="current-password" required></label>
-    <label class="check"><input id="loginRemember" type="checkbox" checked>
-      <span data-i18n="login.remember"></span></label>
-    <button id="loginBtn" class="btn primary big" type="submit" data-i18n="login.signIn"></button>
-    <div id="loginError" class="error"></div>
-    <p class="tiny muted" data-i18n="login.note"></p>
-    <select id="loginLang" class="lang"></select>
-  </form>
+<div class="stage-bg" aria-hidden="true">
+  <span class="wash w1"></span><span class="wash w2"></span><span class="wash w3"></span>
+  <span class="beam"></span><span class="grain"></span>
 </div>
 
-<!-- ============ APP ============ -->
-<div id="appView" class="app hidden">
-  <header class="topbar">
-    <div class="brand">🎭 <span data-i18n="app.short"></span></div>
-    <select id="showSelect" class="show-select"></select>
-    <button id="newShowBtn" class="btn" data-i18n-title="top.newShow">＋</button>
-    <button id="renameShowBtn" class="btn" data-i18n-title="top.renameShow">✎</button>
-    <button id="deleteShowBtn" class="btn" data-i18n-title="top.deleteShow">🗑</button>
-    <div class="spacer"></div>
-    <div class="master">
-      <span class="lbl" data-i18n="top.master"></span>
-      <input id="masterVol" type="range" min="-60" max="6" step="1" value="0">
-      <span id="masterVolLabel" class="mono">0 dB</span>
-      <canvas id="meter" width="80" height="12"></canvas>
+<!-- ══════════════ LOCK ══════════════ -->
+<section id="lock" class="lock">
+  <div class="lock-art">
+    <div class="mark"><span data-icon="logo" data-size="34"></span></div>
+    <h1 class="wordmark">DRAMA<span>CUE</span></h1>
+    <p class="lede" data-i18n="lock.lede"></p>
+    <ul class="points">
+      <li><span data-icon="wave" data-size="17"></span><span data-i18n="lock.p1"></span></li>
+      <li><span data-icon="fade" data-size="17"></span><span data-i18n="lock.p2"></span></li>
+      <li><span data-icon="cloud" data-size="17"></span><span data-i18n="lock.p3"></span></li>
+      <li><span data-icon="lock" data-size="17"></span><span data-i18n="lock.p4"></span></li>
+    </ul>
+    <div class="eq" aria-hidden="true"></div>
+    <p class="lock-foot tiny" data-i18n="lock.foot"></p>
+  </div>
+
+  <div class="lock-panel">
+    <div class="tabs" role="tablist">
+      <button id="tabCloud" class="tab" role="tab"><span data-icon="cloud" data-size="16"></span><span data-i18n="lock.cloud"></span></button>
+      <button id="tabLocal" class="tab" role="tab"><span data-icon="device" data-size="16"></span><span data-i18n="lock.local"></span></button>
     </div>
-    <button id="preloadBtn" class="btn" data-i18n="top.preload"></button>
-    <span id="preloadStatus" class="pill"></span>
-    <button id="settingsBtn" class="btn" data-i18n-title="top.settings">⚙</button>
-    <button id="lockBtn" class="btn danger" data-i18n-title="top.lock">🔒</button>
+
+    <form id="cloudForm" class="gate">
+      <label class="f"><span class="fl" data-i18n="lock.email"></span>
+        <input id="cEmail" type="email" autocomplete="username" spellcheck="false" required></label>
+      <label class="f"><span class="fl" data-i18n="lock.password"></span>
+        <input id="cPass" type="password" autocomplete="current-password" required></label>
+      <label class="check"><input id="cRemember" type="checkbox" checked><span data-i18n="lock.remember"></span></label>
+      <button id="cSubmit" class="btn primary wide" type="submit">
+        <span data-icon="unlock" data-size="17"></span><span data-i18n="lock.signin"></span></button>
+      <p id="cErr" class="err" role="alert"></p>
+      <p class="tiny dim" data-i18n="lock.cloudHint"></p>
+    </form>
+
+    <form id="localForm" class="gate hidden">
+      <label class="f"><span class="fl" data-i18n="lock.passcode"></span>
+        <input id="lPass" type="password" autocomplete="current-password" required></label>
+      <label id="lNewWrap" class="f hidden"><span class="fl" data-i18n="lock.passcode2"></span>
+        <input id="lPass2" type="password" autocomplete="new-password"></label>
+      <label class="check"><input id="lKeep" type="checkbox"><span data-i18n="lock.keep"></span></label>
+      <button id="lSubmit" class="btn primary wide" type="submit">
+        <span data-icon="key" data-size="17"></span><span id="lSubmitLabel"></span></button>
+      <p id="lErr" class="err" role="alert"></p>
+      <p id="lHint" class="tiny dim"></p>
+    </form>
+
+    <div class="gate-foot">
+      <span data-icon="globe" data-size="15"></span>
+      <select id="lockLang" class="mini-select" aria-label="Language"></select>
+    </div>
+  </div>
+</section>
+
+<!-- ══════════════ DESK ══════════════ -->
+<div id="desk" class="desk hidden">
+
+  <header class="rail">
+    <div class="rail-brand"><span data-icon="logo" data-size="24"></span><b>DRAMA<i>CUE</i></b></div>
+
+    <div class="rail-show">
+      <span data-icon="shows" data-size="16"></span>
+      <select id="showSelect" class="mini-select grow" aria-label="Show"></select>
+      <button id="newShow" class="icon-btn" data-i18n-title="rail.newShow"><span data-icon="plus" data-size="16"></span></button>
+      <button id="renameShow" class="icon-btn" data-i18n-title="rail.renameShow"><span data-icon="edit" data-size="16"></span></button>
+      <button id="deleteShow" class="icon-btn" data-i18n-title="rail.deleteShow"><span data-icon="trash" data-size="16"></span></button>
+    </div>
+
+    <div class="spacer"></div>
+
+    <div id="syncPill" class="pill"><span class="dot"></span><span id="syncText"></span></div>
+    <div class="clock"><span class="lbl" data-i18n="rail.showTime"></span><b id="showClock" class="mono">00:00</b></div>
+
+    <div class="master">
+      <span class="lbl" data-i18n="rail.master"></span>
+      <input id="masterFader" type="range" min="-60" max="6" step="1" value="0" aria-label="Master">
+      <b id="masterVal" class="mono">0</b>
+      <canvas id="meterCanvas" width="96" height="14" aria-hidden="true"></canvas>
+      <button id="muteBtn" class="btn mute"><span id="muteIcon" data-icon="volume" data-size="17"></span><span id="muteLabel"></span></button>
+    </div>
+
+    <button id="preloadBtn" class="btn"><span data-icon="download" data-size="16"></span><span data-i18n="rail.preload"></span></button>
+    <span id="preloadPill" class="pill mono">0/0</span>
+    <button id="settingsBtn" class="icon-btn" data-i18n-title="rail.settings"><span data-icon="sliders" data-size="18"></span></button>
+    <button id="lockBtn" class="icon-btn danger" data-i18n-title="rail.lock"><span data-icon="lock" data-size="18"></span></button>
   </header>
 
-  <main class="main">
-    <section class="cue-pane">
-      <div class="toolbar">
-        <button id="addAudioBtn" class="btn primary" data-i18n="cue.addAudio"></button>
-        <input id="fileInput" type="file" accept="audio/*" multiple hidden>
-        <select id="addCueType">
-          <option value="fade" data-i18n="cue.type.fade"></option>
-          <option value="stop" data-i18n="cue.type.stop"></option>
-          <option value="wait" data-i18n="cue.type.wait"></option>
-          <option value="memo" data-i18n="cue.type.memo"></option>
-        </select>
-        <button id="addCueBtn" class="btn" data-i18n="cue.addCue"></button>
-        <span class="sep"></span>
-        <button id="dupCueBtn" class="btn" data-i18n="cue.dup"></button>
-        <button id="delCueBtn" class="btn" data-i18n="cue.del"></button>
-        <button id="upCueBtn" class="btn" data-i18n-title="cue.up">↑</button>
-        <button id="downCueBtn" class="btn" data-i18n-title="cue.down">↓</button>
+  <div class="body">
+    <main class="sheet">
+      <div class="sheet-head">
+        <div class="search">
+          <span data-icon="search" data-size="16"></span>
+          <input id="search" type="search" data-i18n-ph="sheet.search" autocomplete="off">
+        </div>
+        <label class="ctl"><span data-i18n="sheet.type"></span>
+          <select id="typeFilter" class="mini-select">
+            <option value="all" data-i18n="filter.all"></option>
+            <option value="audio" data-i18n="type.audio"></option>
+            <option value="fade" data-i18n="type.fade"></option>
+            <option value="stop" data-i18n="type.stop"></option>
+            <option value="wait" data-i18n="type.wait"></option>
+            <option value="memo" data-i18n="type.memo"></option>
+          </select></label>
+        <label class="ctl"><span data-i18n="sheet.flag"></span>
+          <select id="flagFilter" class="mini-select">
+            <option value="any" data-i18n="flag.any"></option>
+            <option value="hotkey" data-i18n="flag.hotkey"></option>
+            <option value="loop" data-i18n="flag.loop"></option>
+            <option value="error" data-i18n="flag.error"></option>
+          </select></label>
+        <label class="ctl"><span data-i18n="sheet.sort"></span>
+          <select id="sortBy" class="mini-select">
+            <option value="order" data-i18n="sort.order"></option>
+            <option value="name" data-i18n="sort.name"></option>
+            <option value="type" data-i18n="sort.type"></option>
+            <option value="len" data-i18n="sort.len"></option>
+          </select></label>
+        <button id="sortDir" class="icon-btn" data-i18n-title="sheet.sort"><span data-icon="arrowDown" data-size="16"></span></button>
         <div class="spacer"></div>
-        <button id="exportBtn" class="btn" data-i18n="cue.export"></button>
-        <button id="importBtn" class="btn" data-i18n="cue.import"></button>
-        <input id="importInput" type="file" accept="application/json" hidden>
+        <button id="addAudio" class="btn primary"><span data-icon="upload" data-size="16"></span><span data-i18n="insp.upload"></span></button>
+        <input id="fileInput" type="file" accept="audio/*" multiple hidden>
+        <select id="addType" class="mini-select">
+          <option value="audio" data-i18n="type.audio"></option>
+          <option value="fade" data-i18n="type.fade"></option>
+          <option value="stop" data-i18n="type.stop"></option>
+          <option value="wait" data-i18n="type.wait"></option>
+          <option value="memo" data-i18n="type.memo"></option>
+        </select>
+        <button id="addCue" class="btn"><span data-icon="plus" data-size="16"></span><span data-i18n="sheet.addCue"></span></button>
+        <button id="inspectorToggle" class="icon-btn wide-only-hide" data-i18n-title="sheet.inspector"><span data-icon="sliders" data-size="18"></span></button>
       </div>
-      <div id="cueWrap" class="cue-table-wrap">
-        <table class="cue-table">
+
+      <div class="views-row">
+        <span class="lbl"><span data-icon="star" data-size="13"></span><span data-i18n="sheet.views"></span></span>
+        <div id="views" class="chips"></div>
+        <button id="saveView" class="chip ghost"><span data-icon="plus" data-size="13"></span><span data-i18n="sheet.saveView"></span></button>
+        <div class="spacer"></div>
+        <button id="clearFilters" class="chip ghost hidden"><span data-icon="close" data-size="13"></span><span data-i18n="sheet.clearFilters"></span></button>
+        <span id="orderHint" class="hint hidden"><span data-icon="info" data-size="13"></span><span data-i18n="sheet.orderHint"></span></span>
+      </div>
+
+      <div id="bulkBar" class="bulkbar hidden">
+        <span data-icon="check" data-size="16"></span>
+        <b id="bulkCount"></b>
+        <div class="spacer"></div>
+        <button id="bulkDuplicate" class="btn sm"><span data-icon="copy" data-size="15"></span><span data-i18n="duplicate"></span></button>
+        <button id="bulkDelete" class="btn sm danger"><span data-icon="trash" data-size="15"></span><span data-i18n="delete"></span></button>
+        <button id="bulkClear" class="btn sm"><span data-i18n="bulk.clear"></span></button>
+      </div>
+
+      <div id="tableWrap" class="table-wrap">
+        <table class="cues">
           <thead><tr>
-            <th class="c-num" data-i18n="cue.col.num"></th>
-            <th class="c-hk" data-i18n="cue.col.hotkey"></th>
-            <th class="c-type" data-i18n="cue.col.type"></th>
-            <th data-i18n="cue.col.name"></th>
-            <th class="c-len" data-i18n="cue.col.len"></th>
-            <th class="c-cont" data-i18n="cue.col.cont"></th>
+            <th class="c-sel"><input id="selectAll" type="checkbox" aria-label="Select all"></th>
+            <th class="c-num" data-i18n="col.num"></th>
+            <th class="c-state"></th>
+            <th class="c-key" data-i18n="col.key"></th>
+            <th class="c-type" data-i18n="col.type"></th>
+            <th class="c-name" data-i18n="col.name"></th>
+            <th class="c-len" data-i18n="col.len"></th>
+            <th class="c-cont" data-i18n="col.cont"></th>
             <th class="c-act"></th>
           </tr></thead>
           <tbody id="cueBody"></tbody>
         </table>
-        <div id="cueEmpty" class="empty muted" data-i18n="cue.empty"></div>
-        <div id="dropHint" class="drop-hint" data-i18n="cue.drop"></div>
+        <div id="emptyState" class="empty hidden">
+          <span data-icon="wave" data-size="34"></span>
+          <p id="emptyText"></p>
+        </div>
+        <div id="dropzone" class="dropzone"><span data-icon="upload" data-size="30"></span><p data-i18n="sheet.drop"></p></div>
       </div>
-    </section>
-    <aside id="inspector" class="inspector"></aside>
-  </main>
+
+      <div class="sheet-foot">
+        <span id="rowCount" class="mono dim"></span>
+        <div class="spacer"></div>
+        <button id="exportBtn" class="btn sm"><span data-icon="download" data-size="15"></span><span data-i18n="set.exportAll"></span></button>
+        <button id="importBtn" class="btn sm"><span data-icon="upload" data-size="15"></span><span data-i18n="sheet.import"></span></button>
+        <input id="importInput" type="file" accept="application/json" hidden>
+      </div>
+    </main>
+
+    <div id="inspScrim" class="insp-scrim hidden"></div>
+    <aside id="inspector" class="inspector">
+      <div class="insp-top">
+        <span data-icon="sliders" data-size="17"></span><b data-i18n="insp.title"></b>
+        <div class="spacer"></div>
+        <button id="inspClose" class="icon-btn wide-only-hide"><span data-icon="close" data-size="17"></span></button>
+      </div>
+      <div id="inspBody" class="insp-body"></div>
+    </aside>
+  </div>
 
   <footer class="transport">
-    <button id="goBtn" class="go">GO<small>Space</small></button>
+    <button id="goBtn" class="go"><b>GO</b><small>SPACE</small></button>
     <div class="standby">
-      <span class="lbl" data-i18n="transport.standby"></span>
-      <div id="standbyName" class="standby-name">—</div>
+      <span class="lbl" data-i18n="tx.standby"></span>
+      <div class="standby-line"><b id="standbyNum" class="mono">—</b><span id="standbyName"></span></div>
+      <div id="standbyMeta" class="standby-meta"></div>
     </div>
-    <div class="t-btns">
-      <button id="pauseAllBtn" class="btn" data-i18n="transport.pauseAll"></button>
-      <button id="stopAllBtn" class="btn" data-i18n="transport.stopAll"></button>
-      <button id="panicBtn" class="panic">PANIC<small>Esc</small></button>
+    <div class="t-stack">
+      <div class="t-row">
+        <button id="topBtn" class="icon-btn" data-i18n-title="tx.top"><span data-icon="skipBack" data-size="16"></span></button>
+        <button id="prevBtn" class="icon-btn" data-i18n-title="tx.prev"><span data-icon="arrowUp" data-size="16"></span></button>
+        <button id="nextBtn" class="icon-btn" data-i18n-title="tx.next"><span data-icon="arrowDown" data-size="16"></span></button>
+        <button id="pauseAllBtn" class="btn sm"><span id="pauseIcon" data-icon="pause" data-size="15"></span><span id="pauseLabel"></span></button>
+        <button id="stopAllBtn" class="btn sm"><span data-icon="stop" data-size="15"></span><span data-i18n="tx.stopAll"></span></button>
+      </div>
+      <button id="panicBtn" class="panic"><span data-icon="panic" data-size="18"></span><b data-i18n="tx.panic"></b><small>ESC</small></button>
     </div>
-    <div class="active-wrap">
-      <span class="lbl" data-i18n="transport.active"></span>
-      <div id="activeList" class="active"></div>
+    <div class="rack-wrap">
+      <span class="lbl"><span data-icon="meter" data-size="13"></span><span data-i18n="tx.rack"></span></span>
+      <div id="rack" class="rack"></div>
     </div>
   </footer>
 </div>
 
-<!-- ============ SETTINGS ============ -->
-<div id="settingsModal" class="modal hidden">
-  <div class="card modal-card">
-    <h2 data-i18n="settings.title"></h2>
-    <div class="modal-body">
-      <label class="f"><span class="fl" data-i18n="settings.language"></span>
-        <select id="setLang"></select></label>
-
-      <h3 data-i18n="settings.audioOut"></h3>
-      <label class="f"><span class="fl" data-i18n="settings.audioOut"></span>
-        <select id="setOutput"></select></label>
-      <button id="refreshDevBtn" class="btn" data-i18n="settings.refreshDev"></button>
-      <p class="tiny muted" data-i18n="settings.devHint"></p>
-      <label class="f"><span class="fl" data-i18n="settings.panicFade"></span>
-        <input id="setPanicFade" type="number" min="0" max="30" step="0.5"></label>
-
-      <h3 data-i18n="settings.behaviour"></h3>
-      <label class="check"><input id="setSpaceGo" type="checkbox"><span data-i18n="settings.spaceGo"></span></label>
-      <label class="check"><input id="setConfirmDelete" type="checkbox"><span data-i18n="settings.confirmDelete"></span></label>
-      <label class="f"><span class="fl" data-i18n="settings.autoLock"></span>
-        <input id="setAutoLock" type="number" min="0" max="480" step="5"></label>
-      <p class="tiny muted" data-i18n="settings.autoLockHint"></p>
-
-      <h3 data-i18n="settings.account"></h3>
-      <div class="row">
-        <input id="setNewPassword" type="password" data-i18n-ph="settings.newPassword" autocomplete="new-password">
-        <button id="changePwdBtn" class="btn" data-i18n="settings.changePassword"></button>
-      </div>
-      <button id="signOutBtn" class="btn danger" data-i18n="settings.signOut"></button>
-
-      <h3 data-i18n="settings.shortcuts"></h3>
-      <table class="help">
-        <tr><td><kbd>Space</kbd></td><td data-i18n="help.go"></td></tr>
-        <tr><td><kbd>Esc</kbd></td><td data-i18n="help.panic"></td></tr>
-        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td data-i18n="help.standby"></td></tr>
-        <tr><td><kbd>A…Z</kbd> <kbd>0…9</kbd></td><td data-i18n="help.hotkey"></td></tr>
-      </table>
-      <p class="tiny muted" data-i18n="settings.about"></p>
+<!-- ══════════════ SETTINGS ══════════════ -->
+<div id="settings" class="modal hidden" role="dialog" aria-modal="true">
+  <div class="panel">
+    <div class="panel-head"><span data-icon="sliders" data-size="19"></span><h2 data-i18n="set.title"></h2>
+      <div class="spacer"></div><button id="closeSettings" class="icon-btn"><span data-icon="close" data-size="18"></span></button></div>
+    <div class="panel-body">
+      <section>
+        <h3 data-i18n="set.language"></h3>
+        <select id="setLang" class="mini-select wide"></select>
+      </section>
+      <section>
+        <h3 data-i18n="set.audio"></h3>
+        <label class="f"><span class="fl" data-i18n="set.output"></span><select id="setOutput"></select></label>
+        <button id="refreshDev" class="btn sm"><span data-icon="refresh" data-size="15"></span><span data-i18n="set.refresh"></span></button>
+        <p class="tiny dim" data-i18n="set.devHint"></p>
+        <label class="f"><span class="fl" data-i18n="set.panic"></span><input id="setPanic" type="number" min="0" max="30" step="0.5"></label>
+      </section>
+      <section>
+        <h3 data-i18n="set.behaviour"></h3>
+        <label class="check"><input id="setSpace" type="checkbox"><span data-i18n="set.space"></span></label>
+        <label class="check"><input id="setConfirm" type="checkbox"><span data-i18n="set.confirm"></span></label>
+        <label class="check"><input id="setMotion" type="checkbox"><span data-i18n="set.motion"></span></label>
+        <label class="f"><span class="fl" data-i18n="set.autolock"></span><input id="setAutoLock" type="number" min="0" max="480" step="5"></label>
+        <p class="tiny dim" data-i18n="set.autolockHint"></p>
+      </section>
+      <section>
+        <h3 data-i18n="set.account"></h3>
+        <p id="accountInfo" class="tiny dim"></p>
+        <div class="inline">
+          <input id="newPass" type="password" data-i18n-ph="set.newPass" autocomplete="new-password">
+          <button id="changePass" class="btn sm"><span data-icon="key" data-size="15"></span><span data-i18n="set.changePass"></span></button>
+        </div>
+        <button id="signOut" class="btn danger"><span data-icon="lock" data-size="16"></span><span data-i18n="set.signout"></span></button>
+      </section>
+      <section>
+        <h3 data-i18n="set.shortcuts"></h3>
+        <table class="help">
+          <tr><td><kbd>Space</kbd></td><td data-i18n="help.go"></td></tr>
+          <tr><td><kbd>Esc</kbd></td><td data-i18n="help.panic"></td></tr>
+          <tr><td><kbd>&uarr;</kbd><kbd>&darr;</kbd></td><td data-i18n="help.nav"></td></tr>
+          <tr><td><kbd>A</kbd>–<kbd>Z</kbd><kbd>0</kbd>–<kbd>9</kbd></td><td data-i18n="help.hotkey"></td></tr>
+          <tr><td><kbd>Del</kbd></td><td data-i18n="help.delete"></td></tr>
+          <tr><td><kbd>Ctrl</kbd><kbd>Z</kbd></td><td data-i18n="help.undo"></td></tr>
+          <tr><td><kbd>Ctrl</kbd><kbd>F</kbd></td><td data-i18n="help.search"></td></tr>
+        </table>
+      </section>
+      <p class="tiny dim" data-i18n="set.about"></p>
     </div>
-    <div class="modal-foot"><button id="closeSettingsBtn" class="btn primary" data-i18n="settings.close"></button></div>
+    <div class="panel-foot"><button id="closeSettings2" class="btn primary"><span data-i18n="close"></span></button></div>
   </div>
 </div>
 
-<!-- ============ DIALOG / TOAST ============ -->
-<div id="dialog" class="modal hidden" tabindex="-1">
-  <div class="card modal-card small">
-    <h2 id="dlgTitle"></h2>
-    <p id="dlgBody" class="muted"></p>
-    <input id="dlgInput" class="hidden" type="text">
-    <div class="modal-foot">
-      <button id="dlgCancel" class="btn"></button>
-      <button id="dlgOk" class="btn primary"></button>
-    </div>
+<!-- ══════════════ DIALOG / TOAST ══════════════ -->
+<div id="dialog" class="modal hidden" tabindex="-1" role="dialog" aria-modal="true">
+  <div class="panel small">
+    <div class="panel-head"><span id="dlgIcon" data-icon="alert" data-size="19"></span><h2 id="dlgTitle"></h2></div>
+    <div class="panel-body"><p id="dlgBody" class="dim"></p><input id="dlgInput" class="hidden" type="text"></div>
+    <div class="panel-foot"><button id="dlgCancel" class="btn"></button><button id="dlgOk" class="btn primary"></button></div>
   </div>
 </div>
-<div id="toast" class="toast"></div>
+
+<div id="toast" class="toast" role="status">
+  <span id="toastIcon" data-icon="info" data-size="17"></span>
+  <span id="toastMsg"></span>
+  <button id="toastAction" class="btn sm hidden"></button>
+  <button id="toastClose" class="icon-btn"><span data-icon="close" data-size="15"></span></button>
+  <i id="toastBar"></i>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>
