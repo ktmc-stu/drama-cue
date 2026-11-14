@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Drama Cue</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<noscript>This app requires JavaScript / 此系統需要 JavaScript。</noscript>
+
+<!-- ============ LOGIN / PASSWORD LOCK ============ -->
+<div id="loginView" class="login-wrap hidden">
+  <form id="loginForm" class="card login-card">
+    <h1>🎭 <span data-i18n="app.title">Drama Cue</span></h1>
+    <p class="muted" data-i18n="login.subtitle"></p>
+    <label class="f"><span class="fl" data-i18n="login.email"></span>
+      <input id="loginEmail" type="email" autocomplete="username" required></label>
+    <label class="f"><span class="fl" data-i18n="login.password"></span>
+      <input id="loginPassword" type="password" autocomplete="current-password" required></label>
+    <label class="check"><input id="loginRemember" type="checkbox" checked>
+      <span data-i18n="login.remember"></span></label>
+    <button id="loginBtn" class="btn primary big" type="submit" data-i18n="login.signIn"></button>
+    <div id="loginError" class="error"></div>
+    <p class="tiny muted" data-i18n="login.note"></p>
+    <select id="loginLang" class="lang"></select>
+  </form>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="appView" class="app hidden">
+  <header class="topbar">
+    <div class="brand">🎭 <span data-i18n="app.short"></span></div>
+    <select id="showSelect" class="show-select"></select>
+    <button id="newShowBtn" class="btn" data-i18n-title="top.newShow">＋</button>
+    <button id="renameShowBtn" class="btn" data-i18n-title="top.renameShow">✎</button>
+    <button id="deleteShowBtn" class="btn" data-i18n-title="top.deleteShow">🗑</button>
+    <div class="spacer"></div>
+    <div class="master">
+      <span class="lbl" data-i18n="top.master"></span>
+      <input id="masterVol" type="range" min="-60" max="6" step="1" value="0">
+      <span id="masterVolLabel" class="mono">0 dB</span>
+      <canvas id="meter" width="80" height="12"></canvas>
+    </div>
+    <button id="preloadBtn" class="btn" data-i18n="top.preload"></button>
+    <span id="preloadStatus" class="pill"></span>
+    <button id="settingsBtn" class="btn" data-i18n-title="top.settings">⚙</button>
+    <button id="lockBtn" class="btn danger" data-i18n-title="top.lock">🔒</button>
+  </header>
+
+  <main class="main">
+    <section class="cue-pane">
+      <div class="toolbar">
+        <button id="addAudioBtn" class="btn primary" data-i18n="cue.addAudio"></button>
+        <input id="fileInput" type="file" accept="audio/*" multiple hidden>
+        <select id="addCueType">
+          <option value="fade" data-i18n="cue.type.fade"></option>
+          <option value="stop" data-i18n="cue.type.stop"></option>
+          <option value="wait" data-i18n="cue.type.wait"></option>
+          <option value="memo" data-i18n="cue.type.memo"></option>
+        </select>
+        <button id="addCueBtn" class="btn" data-i18n="cue.addCue"></button>
+        <span class="sep"></span>
+        <button id="dupCueBtn" class="btn" data-i18n="cue.dup"></button>
+        <button id="delCueBtn" class="btn" data-i18n="cue.del"></button>
+        <button id="upCueBtn" class="btn" data-i18n-title="cue.up">↑</button>
+        <button id="downCueBtn" class="btn" data-i18n-title="cue.down">↓</button>
+        <div class="spacer"></div>
+        <button id="exportBtn" class="btn" data-i18n="cue.export"></button>
+        <button id="importBtn" class="btn" data-i18n="cue.import"></button>
+        <input id="importInput" type="file" accept="application/json" hidden>
+      </div>
+      <div id="cueWrap" class="cue-table-wrap">
+        <table class="cue-table">
+          <thead><tr>
+            <th class="c-num" data-i18n="cue.col.num"></th>
+            <th class="c-hk" data-i18n="cue.col.hotkey"></th>
+            <th class="c-type" data-i18n="cue.col.type"></th>
+            <th data-i18n="cue.col.name"></th>
+            <th class="c-len" data-i18n="cue.col.len"></th>
+            <th class="c-cont" data-i18n="cue.col.cont"></th>
+            <th class="c-act"></th>
+          </tr></thead>
+          <tbody id="cueBody"></tbody>
+        </table>
+        <div id="cueEmpty" class="empty muted" data-i18n="cue.empty"></div>
+        <div id="dropHint" class="drop-hint" data-i18n="cue.drop"></div>
+      </div>
+    </section>
+    <aside id="inspector" class="inspector"></aside>
+  </main>
+
+  <footer class="transport">
+    <button id="goBtn" class="go">GO<small>Space</small></button>
+    <div class="standby">
+      <span class="lbl" data-i18n="transport.standby"></span>
+      <div id="standbyName" class="standby-name">—</div>
+    </div>
+    <div class="t-btns">
+      <button id="pauseAllBtn" class="btn" data-i18n="transport.pauseAll"></button>
+      <button id="stopAllBtn" class="btn" data-i18n="transport.stopAll"></button>
+      <button id="panicBtn" class="panic">PANIC<small>Esc</small></button>
+    </div>
+    <div class="active-wrap">
+      <span class="lbl" data-i18n="transport.active"></span>
+      <div id="activeList" class="active"></div>
+    </div>
+  </footer>
+</div>
+
+<!-- ============ SETTINGS ============ -->
+<div id="settingsModal" class="modal hidden">
+  <div class="card modal-card">
+    <h2 data-i18n="settings.title"></h2>
+    <div class="modal-body">
+      <label class="f"><span class="fl" data-i18n="settings.language"></span>
+        <select id="setLang"></select></label>
+
+      <h3 data-i18n="settings.audioOut"></h3>
+      <label class="f"><span class="fl" data-i18n="settings.audioOut"></span>
+        <select id="setOutput"></select></label>
+      <button id="refreshDevBtn" class="btn" data-i18n="settings.refreshDev"></button>
+      <p class="tiny muted" data-i18n="settings.devHint"></p>
+      <label class="f"><span class="fl" data-i18n="settings.panicFade"></span>
+        <input id="setPanicFade" type="number" min="0" max="30" step="0.5"></label>
+
+      <h3 data-i18n="settings.behaviour"></h3>
+      <label class="check"><input id="setSpaceGo" type="checkbox"><span data-i18n="settings.spaceGo"></span></label>
+      <label class="check"><input id="setConfirmDelete" type="checkbox"><span data-i18n="settings.confirmDelete"></span></label>
+      <label class="f"><span class="fl" data-i18n="settings.autoLock"></span>
+        <input id="setAutoLock" type="number" min="0" max="480" step="5"></label>
+      <p class="tiny muted" data-i18n="settings.autoLockHint"></p>
+
+      <h3 data-i18n="settings.account"></h3>
+      <div class="row">
+        <input id="setNewPassword" type="password" data-i18n-ph="settings.newPassword" autocomplete="new-password">
+        <button id="changePwdBtn" class="btn" data-i18n="settings.changePassword"></button>
+      </div>
+      <button id="signOutBtn" class="btn danger" data-i18n="settings.signOut"></button>
+
+      <h3 data-i18n="settings.shortcuts"></h3>
+      <table class="help">
+        <tr><td><kbd>Space</kbd></td><td data-i18n="help.go"></td></tr>
+        <tr><td><kbd>Esc</kbd></td><td data-i18n="help.panic"></td></tr>
+        <tr><td><kbd>↑</kbd> <kbd>↓</kbd></td><td data-i18n="help.standby"></td></tr>
+        <tr><td><kbd>A…Z</kbd> <kbd>0…9</kbd></td><td data-i18n="help.hotkey"></td></tr>
+      </table>
+      <p class="tiny muted" data-i18n="settings.about"></p>
+    </div>
+    <div class="modal-foot"><button id="closeSettingsBtn" class="btn primary" data-i18n="settings.close"></button></div>
+  </div>
+</div>
+
+<!-- ============ DIALOG / TOAST ============ -->
+<div id="dialog" class="modal hidden" tabindex="-1">
+  <div class="card modal-card small">
+    <h2 id="dlgTitle"></h2>
+    <p id="dlgBody" class="muted"></p>
+    <input id="dlgInput" class="hidden" type="text">
+    <div class="modal-foot">
+      <button id="dlgCancel" class="btn"></button>
+      <button id="dlgOk" class="btn primary"></button>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
